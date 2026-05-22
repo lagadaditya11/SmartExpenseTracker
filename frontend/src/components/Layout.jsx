@@ -21,18 +21,6 @@ function SidebarItem({ to, icon: Icon, label, onClick }) {
         sidebar-item
         ${isActive ? 'sidebar-item-active' : ''}
       `}
-      style={({ isActive }) => ({
-        display: 'flex',
-        alignItems: 'center',
-        gap: 'var(--space-3)',
-        padding: 'var(--space-3) var(--space-4)',
-        borderRadius: 'var(--radius-lg)',
-        color: isActive ? 'var(--color-primary-700)' : 'var(--color-gray-600)',
-        backgroundColor: isActive ? 'var(--color-primary-50)' : 'transparent',
-        fontWeight: isActive ? 500 : 400,
-        transition: 'all var(--transition-fast)',
-        textDecoration: 'none',
-      })}
     >
       <Icon size={20} />
       <span>{label}</span>
@@ -211,44 +199,14 @@ function Layout() {
   )
 
   return (
-    <div style={{ display: 'flex', minHeight: '100vh' }}>
+    <div className="app-shell">
       {/* Desktop Sidebar */}
-      <aside
-        style={{
-          width: 'var(--sidebar-width)',
-          background: 'white',
-          borderRight: '1px solid var(--color-gray-200)',
-          display: 'none',
-          flexDirection: 'column',
-          position: 'fixed',
-          height: '100vh',
-          '@media (min-width: 1024px)': {
-            display: 'flex',
-          },
-        }}
-        className="desktop-sidebar"
-      >
+      <aside className="desktop-sidebar">
         {sidebarContent}
       </aside>
 
       {/* Mobile Header */}
-      <header
-        style={{
-          position: 'fixed',
-          top: 0,
-          left: 0,
-          right: 0,
-          height: 'var(--header-height)',
-          background: 'white',
-          borderBottom: '1px solid var(--color-gray-200)',
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'space-between',
-          padding: '0 var(--space-4)',
-          zIndex: 40,
-        }}
-        className="mobile-header"
-      >
+      <header className="mobile-header">
         <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-3)' }}>
           <div
             style={{
@@ -270,13 +228,8 @@ function Layout() {
         </div>
         <button
           onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
-          style={{
-            background: 'none',
-            border: 'none',
-            cursor: 'pointer',
-            padding: 'var(--space-2)',
-            color: 'var(--color-gray-600)',
-          }}
+          className="mobile-menu-button"
+          aria-label={mobileMenuOpen ? 'Close navigation' : 'Open navigation'}
         >
           {mobileMenuOpen ? <X size={24} /> : <Menu size={24} />}
         </button>
@@ -285,13 +238,6 @@ function Layout() {
       {/* Mobile Menu Overlay */}
       {mobileMenuOpen && (
         <div
-          style={{
-            position: 'fixed',
-            inset: 0,
-            background: 'rgba(0, 0, 0, 0.5)',
-            zIndex: 45,
-            display: 'block',
-          }}
           className="mobile-overlay"
           onClick={() => setMobileMenuOpen(false)}
         />
@@ -299,59 +245,17 @@ function Layout() {
 
       {/* Mobile Sidebar */}
       <aside
-        style={{
-          position: 'fixed',
-          top: 0,
-          left: 0,
-          bottom: 0,
-          width: '280px',
-          background: 'white',
-          transform: mobileMenuOpen ? 'translateX(0)' : 'translateX(-100%)',
-          transition: 'transform var(--transition-base)',
-          zIndex: 50,
-          display: 'flex',
-          flexDirection: 'column',
-        }}
-        className="mobile-sidebar"
+        className={`mobile-sidebar ${mobileMenuOpen ? 'mobile-sidebar-open' : ''}`}
       >
         {sidebarContent}
       </aside>
 
       {/* Main Content */}
-      <main
-        style={{
-          flex: 1,
-          marginLeft: 0,
-          paddingTop: 'var(--header-height)',
-          minHeight: '100vh',
-        }}
-        className="main-content"
-      >
-        <div
-          style={{
-            padding: 'var(--space-6)',
-          }}
-        >
+      <main className="main-content">
+        <div className="main-content-inner">
           <Outlet />
         </div>
       </main>
-
-      <style>{`
-        @media (min-width: 1024px) {
-          .desktop-sidebar {
-            display: flex !important;
-          }
-          .mobile-header,
-          .mobile-overlay,
-          .mobile-sidebar {
-            display: none !important;
-          }
-          .main-content {
-            margin-left: var(--sidebar-width);
-            padding-top: 0;
-          }
-        }
-      `}</style>
     </div>
   )
 }
