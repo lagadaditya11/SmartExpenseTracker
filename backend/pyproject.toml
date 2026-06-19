@@ -26,6 +26,7 @@ test = [
 
 [project.scripts]
 smart-expense-migrate = "app.scripts.migrate_sqlite:main"
+smart-expense-seed = "app.scripts.seed_data:main"
 
 [build-system]
 requires = ["setuptools>=68"]
