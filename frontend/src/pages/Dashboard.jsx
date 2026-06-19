@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { analyticsApi, expensesApi } from '../services/api'
 import { useToast } from '../contexts/ToastContext'
+import { APP_LOCALE, formatCurrency } from '../utils/format'
 import {
   DollarSign,
   Receipt,
@@ -87,18 +88,13 @@ function StatCard({ icon: Icon, title, value, subtitle, color }) {
 
 function RecentExpenses({ expenses, onViewAll }) {
   const formatDate = (dateStr) => {
-    return new Date(dateStr).toLocaleDateString('en-US', {
+    return new Date(dateStr).toLocaleDateString(APP_LOCALE, {
       month: 'short',
       day: 'numeric',
     })
   }
 
-  const formatAmount = (amount) => {
-    return new Intl.NumberFormat('en-US', {
-      style: 'currency',
-      currency: 'USD',
-    }).format(amount)
-  }
+  const formatAmount = formatCurrency
 
   return (
     <div className="card">
@@ -211,7 +207,7 @@ function Dashboard() {
 
         setSummary(summaryRes)
         setMonthlyData(monthlyRes.map(item => ({
-          month: new Date(item.month + '-01').toLocaleDateString('en-US', { month: 'short' }),
+          month: new Date(item.month + '-01').toLocaleDateString(APP_LOCALE, { month: 'short' }),
           total: Number(item.total),
         })))
         setRecentExpenses(expensesRes.items)
@@ -225,13 +221,6 @@ function Dashboard() {
 
     fetchDashboardData()
   }, [error])
-
-  const formatCurrency = (amount) => {
-    return new Intl.NumberFormat('en-US', {
-      style: 'currency',
-      currency: 'USD',
-    }).format(amount || 0)
-  }
 
   const categoryColors = summary?.category_breakdown?.map((cat, index) => {
     const defaultColors = ['#3b82f6', '#22c55e', '#f59e0b', '#ef4444', '#8b5cf6', '#ec4899', '#06b6d4', '#84cc16']

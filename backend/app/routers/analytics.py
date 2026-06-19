@@ -1,14 +1,17 @@
 from calendar import monthrange
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta
 from decimal import Decimal
+from zoneinfo import ZoneInfo
 
 from fastapi import APIRouter, Depends
-from sqlalchemy import select
+from sqlalchemy import extract, func, select
 from sqlalchemy.orm import Session, joinedload
 
+from app.core.config import settings
 from app.core.database import get_db
 from app.core.dependencies import get_current_user
 from app.models.budget import Budget
+from app.models.category import Category
 from app.models.expense import Expense
 from app.models.user import User
 from app.schemas.analytics import (
@@ -26,22 +29,21 @@ def monthly_summary(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ) -> list[MonthlySummaryPoint]:
-    months = _last_n_months(date.today(), 12)
+    months = _last_n_months(_today(), 12)
     start = _month_start(months[0])
-    expenses = list(
-        db.scalars(
-            select(Expense).where(
-                Expense.user_id == current_user.id,
-                Expense.date >= start,
-            )
-        )
+    year = extract("year", Expense.date)
+    month_number = extract("month", Expense.date)
+    rows = db.execute(
+        select(year, month_number, func.sum(Expense.amount))
+        .where(Expense.user_id == current_user.id, Expense.date >= start)
+        .group_by(year, month_number)
     )
 
     totals = {month: Decimal("0.00") for month in months}
-    for expense in expenses:
-        key = expense.date.strftime("%Y-%m")
+    for row_year, row_month, total in rows:
+        key = f"{int(row_year):04d}-{int(row_month):02d}"
         if key in totals:
-            totals[key] += expense.amount
+            totals[key] = Decimal(total)
 
     return [MonthlySummaryPoint(month=month, total=total) for month, total in totals.items()]
 
@@ -51,7 +53,7 @@ def category_breakdown(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ) -> list[CategoryBreakdownPoint]:
-    return _category_breakdown(db, current_user.id, _current_month_start(), _next_month_start(date.today()))
+    return _category_breakdown(db, current_user.id, _current_month_start(), _next_month_start(_today()))
 
 
 @router.get("/dashboard-summary", response_model=DashboardSummary)
@@ -60,21 +62,19 @@ def dashboard_summary(
     current_user: User = Depends(get_current_user),
 ) -> DashboardSummary:
     month_start = _current_month_start()
-    month_end = _next_month_start(date.today())
-    expenses = list(
-        db.scalars(
-            select(Expense).where(
-                Expense.user_id == current_user.id,
-                Expense.date >= month_start,
-                Expense.date < month_end,
-            )
+    month_end = _next_month_start(_today())
+    current_month_total, transaction_count = db.execute(
+        select(func.coalesce(func.sum(Expense.amount), 0), func.count(Expense.id)).where(
+            Expense.user_id == current_user.id,
+            Expense.date >= month_start,
+            Expense.date < month_end,
         )
-    )
+    ).one()
     return DashboardSummary(
-        current_month_total=sum((expense.amount for expense in expenses), Decimal("0.00")),
-        transaction_count=len(expenses),
+        current_month_total=Decimal(current_month_total),
+        transaction_count=int(transaction_count),
         category_breakdown=_category_breakdown(db, current_user.id, month_start, month_end),
-        budget_usage=_budget_usage(db, current_user.id, date.today().strftime("%Y-%m")),
+        budget_usage=_budget_usage(db, current_user.id, _today().strftime("%Y-%m")),
     )
 
 
@@ -84,31 +84,31 @@ def _category_breakdown(
     start_date: date,
     end_date: date,
 ) -> list[CategoryBreakdownPoint]:
-    expenses = list(
-        db.scalars(
-            select(Expense)
-            .options(joinedload(Expense.category))
-            .where(
-                Expense.user_id == user_id,
-                Expense.date >= start_date,
-                Expense.date < end_date,
-            )
+    rows = db.execute(
+        select(
+            Expense.category_id,
+            Category.name,
+            Category.color_hex,
+            func.sum(Expense.amount).label("total"),
         )
+        .outerjoin(Category, Expense.category_id == Category.id)
+        .where(
+            Expense.user_id == user_id,
+            Expense.date >= start_date,
+            Expense.date < end_date,
+        )
+        .group_by(Expense.category_id, Category.name, Category.color_hex)
+        .order_by(func.sum(Expense.amount).desc())
     )
-
-    totals: dict[int | None, CategoryBreakdownPoint] = {}
-    for expense in expenses:
-        key = expense.category_id
-        if key not in totals:
-            totals[key] = CategoryBreakdownPoint(
-                category_id=expense.category_id,
-                category_name=expense.category.name if expense.category else "Uncategorized",
-                color_hex=expense.category.color_hex if expense.category else None,
-                total=Decimal("0.00"),
-            )
-        totals[key].total += expense.amount
-
-    return sorted(totals.values(), key=lambda point: point.total, reverse=True)
+    return [
+        CategoryBreakdownPoint(
+            category_id=category_id,
+            category_name=name or "Uncategorized",
+            color_hex=color_hex,
+            total=Decimal(total),
+        )
+        for category_id, name, color_hex, total in rows
+    ]
 
 
 def _budget_usage(db: Session, user_id: int, month: str) -> list[BudgetUsagePoint]:
@@ -140,7 +140,7 @@ def _budget_usage(db: Session, user_id: int, month: str) -> list[BudgetUsagePoin
 
 
 def _current_month_start() -> date:
-    today = date.today()
+    today = _today()
     return date(today.year, today.month, 1)
 
 
@@ -166,5 +166,9 @@ def _last_n_months(value: date, count: int) -> list[str]:
 def _month_start(month: str) -> date:
     year, month_number = (int(part) for part in month.split("-"))
     return date(year, month_number, 1)
+
+
+def _today() -> date:
+    return datetime.now(ZoneInfo(settings.app_timezone)).date()
 
 _ONE_DAY = timedelta(days=1)

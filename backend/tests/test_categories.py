@@ -1,54 +1,45 @@
-import pytest
-from fastapi import HTTPException
-from sqlalchemy.orm import Session
+from fastapi.testclient import TestClient
 
-from app.routers import auth, categories
-from app.schemas.auth import UserCreate
-from app.schemas.category import CategoryCreate, CategoryUpdate
+from tests.conftest import csrf_headers
 
 
-def test_default_categories_and_crud(db_session: Session) -> None:
-    user = auth.register(
-        UserCreate(email="user@example.com", password="password123", name="User"),
-        db_session,
+def test_category_crud(authenticated_client: TestClient) -> None:
+    headers = csrf_headers(authenticated_client)
+    created = authenticated_client.post(
+        "/categories",
+        json={"name": "Books", "color_hex": "#0f766e", "icon": "book"},
+        headers=headers,
     )
-    assert len(categories.list_categories(db_session, user)) == 6
+    assert created.status_code == 201
 
-    category = categories.create_category(
-        CategoryCreate(name="Books", color_hex="#0f766e", icon="book"),
-        db_session,
-        user,
+    updated = authenticated_client.patch(
+        f"/categories/{created.json()['id']}", json={"name": "Reading"}, headers=headers
     )
+    assert updated.status_code == 200
+    assert updated.json()["name"] == "Reading"
 
-    updated = categories.update_category(
-        category.id,
-        CategoryUpdate(name="Reading"),
-        db_session,
-        user,
+    deleted = authenticated_client.delete(f"/categories/{created.json()['id']}", headers=headers)
+    assert deleted.status_code == 204
+    assert authenticated_client.patch(
+        f"/categories/{created.json()['id']}", json={"name": "Missing"}, headers=headers
+    ).status_code == 404
+
+
+def test_category_ownership(client: TestClient) -> None:
+    owner = {"email": "owner@example.com", "password": "password123", "name": "Owner"}
+    other = {"email": "other@example.com", "password": "password123", "name": "Other"}
+    assert client.post("/auth/register", json=owner).status_code == 201
+    created = client.post(
+        "/categories",
+        json={"name": "Private", "color_hex": "#111827", "icon": "lock"},
+        headers=csrf_headers(client),
     )
-    assert updated.name == "Reading"
+    assert created.status_code == 201
 
-    categories.delete_category(category.id, db_session, user)
-    with pytest.raises(HTTPException) as missing_error:
-        categories.update_category(category.id, CategoryUpdate(name="Missing"), db_session, user)
-    assert missing_error.value.status_code == 404
-
-
-def test_category_ownership(db_session: Session) -> None:
-    owner = auth.register(
-        UserCreate(email="owner@example.com", password="password123", name="Owner"),
-        db_session,
+    assert client.post("/auth/register", json=other).status_code == 201
+    stolen = client.patch(
+        f"/categories/{created.json()['id']}",
+        json={"name": "Stolen"},
+        headers=csrf_headers(client),
     )
-    other = auth.register(
-        UserCreate(email="other@example.com", password="password123", name="Other"),
-        db_session,
-    )
-    category = categories.create_category(
-        CategoryCreate(name="Private", color_hex="#111827", icon="lock"),
-        db_session,
-        owner,
-    )
-
-    with pytest.raises(HTTPException) as ownership_error:
-        categories.update_category(category.id, CategoryUpdate(name="Stolen"), db_session, other)
-    assert ownership_error.value.status_code == 404
+    assert stolen.status_code == 404

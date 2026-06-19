@@ -23,6 +23,7 @@ import {
 } from 'lucide-react'
 import { analyticsApi } from '../services/api'
 import { useToast } from '../contexts/ToastContext'
+import { formatCurrency, formatDate } from '../utils/format'
 
 const FALLBACK_COLORS = [
   '#3b82f6',
@@ -36,13 +37,6 @@ const FALLBACK_COLORS = [
   '#14b8a6',
   '#64748b',
 ]
-
-function formatCurrency(amount) {
-  return new Intl.NumberFormat('en-US', {
-    style: 'currency',
-    currency: 'USD',
-  }).format(Number(amount) || 0)
-}
 
 function StatCard({ icon: Icon, label, value, detail, tone = 'blue' }) {
   const tones = {
@@ -211,7 +205,7 @@ function Analytics() {
         setMonthlyData(
           monthlyRes.map((item) => ({
             month: item.month,
-            label: new Date(`${item.month}-01`).toLocaleDateString('en-US', {
+            label: formatDate(`${item.month}-01`, {
               month: 'short',
               year: '2-digit',
             }),

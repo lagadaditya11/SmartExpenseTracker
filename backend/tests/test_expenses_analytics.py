@@ -1,113 +1,83 @@
 from datetime import date
 
-import pytest
-from fastapi import HTTPException
-from sqlalchemy.orm import Session
+from fastapi.testclient import TestClient
 
-from app.routers import analytics, auth, categories, expenses
-from app.schemas.auth import UserCreate
-from app.schemas.category import CategoryCreate
-from app.schemas.expense import ExpenseCreate, ExpenseUpdate
+from tests.conftest import csrf_headers
 
 
-def test_expense_crud_filters_and_analytics(db_session: Session) -> None:
-    user = auth.register(
-        UserCreate(email="user@example.com", password="password123", name="User"),
-        db_session,
+def test_expense_crud_filters_and_analytics(authenticated_client: TestClient) -> None:
+    categories = authenticated_client.get("/categories").json()
+    food = next(category for category in categories if category["name"] == "Food")
+    transport = next(category for category in categories if category["name"] == "Transport")
+    headers = csrf_headers(authenticated_client)
+
+    first = authenticated_client.post(
+        "/expenses",
+        json={
+            "amount": "25.50",
+            "description": "Lunch",
+            "date": date.today().isoformat(),
+            "payment_method": "card",
+            "category_id": food["id"],
+        },
+        headers=headers,
     )
-    category_list = categories.list_categories(db_session, user)
-    food = next(category for category in category_list if category.name == "Food")
-    transport = next(category for category in category_list if category.name == "Transport")
-
-    first = expenses.create_expense(
-        ExpenseCreate(
-            amount="25.50",
-            description="Lunch",
-            date=date.today(),
-            payment_method="card",
-            category_id=food.id,
-        ),
-        db_session,
-        user,
+    assert first.status_code == 201, first.text
+    second = authenticated_client.post(
+        "/expenses",
+        json={
+            "amount": "10.00",
+            "description": "Metro",
+            "date": date.today().isoformat(),
+            "payment_method": "upi",
+            "category_id": transport["id"],
+        },
+        headers=headers,
     )
-    expenses.create_expense(
-        ExpenseCreate(
-            amount="10.00",
-            description="Metro",
-            date=date.today(),
-            payment_method="upi",
-            category_id=transport.id,
-        ),
-        db_session,
-        user,
+    assert second.status_code == 201
+
+    filtered = authenticated_client.get("/expenses", params={"category_id": food["id"]}).json()
+    assert filtered["total"] == 1
+    assert filtered["items"][0]["description"] == "Lunch"
+
+    updated = authenticated_client.patch(
+        f"/expenses/{first.json()['id']}", json={"amount": "30.00"}, headers=headers
     )
+    assert updated.status_code == 200
+    assert updated.json()["amount"] == "30.00"
 
-    filtered = expenses.list_expenses(
-        db_session,
-        user,
-        category_id=food.id,
-    )
-    assert filtered.total == 1
-    assert filtered.items[0].description == "Lunch"
+    dashboard = authenticated_client.get("/analytics/dashboard-summary").json()
+    assert dashboard["current_month_total"] == "40.00"
+    assert dashboard["transaction_count"] == 2
+    assert len(dashboard["category_breakdown"]) == 2
 
-    updated = expenses.update_expense(first.id, ExpenseUpdate(amount="30.00"), db_session, user)
-    assert str(updated.amount) == "30.00"
-
-    dashboard = analytics.dashboard_summary(db_session, user)
-    assert str(dashboard.current_month_total) == "40.00"
-    assert dashboard.transaction_count == 2
-    assert len(dashboard.category_breakdown) == 2
-
-    expenses.delete_expense(first.id, db_session, user)
-    remaining = expenses.list_expenses(db_session, user)
-    assert remaining.total == 1
+    assert authenticated_client.delete(
+        f"/expenses/{first.json()['id']}", headers=headers
+    ).status_code == 204
+    assert authenticated_client.get("/expenses").json()["total"] == 1
 
 
-def test_invalid_category_rejected(db_session: Session) -> None:
-    user = auth.register(
-        UserCreate(email="user@example.com", password="password123", name="User"),
-        db_session,
-    )
-    with pytest.raises(HTTPException) as invalid_error:
-        expenses.create_expense(
-            ExpenseCreate(
-                amount="12.00",
-                description="Bad category",
-                date=date.today(),
-                payment_method="cash",
-                category_id=9999,
-            ),
-            db_session,
-            user,
+def test_invalid_and_cross_tenant_category_rejected(client: TestClient) -> None:
+    owner = {"email": "owner@example.com", "password": "password123", "name": "Owner"}
+    other = {"email": "other@example.com", "password": "password123", "name": "Other"}
+    assert client.post("/auth/register", json=owner).status_code == 201
+    private = client.post(
+        "/categories",
+        json={"name": "Private", "color_hex": "#111827", "icon": "lock"},
+        headers=csrf_headers(client),
+    ).json()
+    assert client.post("/auth/register", json=other).status_code == 201
+
+    for category_id in (private["id"], 9999):
+        rejected = client.post(
+            "/expenses",
+            json={
+                "amount": "12.00",
+                "description": "Bad category",
+                "date": date.today().isoformat(),
+                "payment_method": "cash",
+                "category_id": category_id,
+            },
+            headers=csrf_headers(client),
         )
-    assert invalid_error.value.status_code == 400
-
-
-def test_expense_category_ownership(db_session: Session) -> None:
-    owner = auth.register(
-        UserCreate(email="owner@example.com", password="password123", name="Owner"),
-        db_session,
-    )
-    other = auth.register(
-        UserCreate(email="other@example.com", password="password123", name="Other"),
-        db_session,
-    )
-    private_category = categories.create_category(
-        CategoryCreate(name="Private", color_hex="#111827", icon="lock"),
-        db_session,
-        owner,
-    )
-
-    with pytest.raises(HTTPException) as ownership_error:
-        expenses.create_expense(
-            ExpenseCreate(
-                amount="12.00",
-                description="Bad category",
-                date=date.today(),
-                payment_method="cash",
-                category_id=private_category.id,
-            ),
-            db_session,
-            other,
-        )
-    assert ownership_error.value.status_code == 400
+        assert rejected.status_code == 400

@@ -1,6 +1,6 @@
 from decimal import Decimal
 
-from sqlalchemy import ForeignKey, Numeric, String, UniqueConstraint
+from sqlalchemy import CheckConstraint, ForeignKey, Numeric, String, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.core.database import Base
@@ -8,7 +8,11 @@ from app.core.database import Base
 
 class Budget(Base):
     __tablename__ = "budgets"
-    __table_args__ = (UniqueConstraint("user_id", "category_id", "month", name="uq_budgets_user_category_month"),)
+    __table_args__ = (
+        UniqueConstraint("user_id", "category_id", "month", name="uq_budgets_user_category_month"),
+        CheckConstraint("monthly_limit > 0", name="ck_budgets_limit_positive"),
+        CheckConstraint("spent_so_far >= 0", name="ck_budgets_spent_nonnegative"),
+    )
 
     id: Mapped[int] = mapped_column(primary_key=True, index=True)
     user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)

@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback } from 'react'
 import { useLocation, useNavigate } from 'react-router-dom'
 import { expensesApi, categoriesApi } from '../services/api'
 import { useToast } from '../contexts/ToastContext'
+import { APP_LOCALE, formatCurrency } from '../utils/format'
 import {
   Plus,
   Search,
@@ -404,19 +405,14 @@ function Expenses() {
   }
 
   const formatDate = (dateStr) => {
-    return new Date(dateStr).toLocaleDateString('en-US', {
+    return new Date(dateStr).toLocaleDateString(APP_LOCALE, {
       year: 'numeric',
       month: 'short',
       day: 'numeric',
     })
   }
 
-  const formatAmount = (amount) => {
-    return new Intl.NumberFormat('en-US', {
-      style: 'currency',
-      currency: 'USD',
-    }).format(amount)
-  }
+  const formatAmount = formatCurrency
 
   const totalPages = Math.ceil(pagination.total / pagination.limit)
   const currentPage = Math.floor(pagination.offset / pagination.limit) + 1

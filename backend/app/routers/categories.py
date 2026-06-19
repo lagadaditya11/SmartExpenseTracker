@@ -1,11 +1,12 @@
 from fastapi import APIRouter, Depends, HTTPException, status
-from sqlalchemy import select
+from sqlalchemy import select, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.core.database import get_db
 from app.core.dependencies import get_current_user
 from app.models.category import Category
+from app.models.expense import Expense
 from app.models.user import User
 from app.schemas.category import CategoryCreate, CategoryRead, CategoryUpdate
 
@@ -69,6 +70,11 @@ def delete_category(
     current_user: User = Depends(get_current_user),
 ) -> None:
     category = _get_category(db, current_user.id, category_id)
+    db.execute(
+        update(Expense)
+        .where(Expense.user_id == current_user.id, Expense.category_id == category.id)
+        .values(category_id=None)
+    )
     db.delete(category)
     db.commit()
 

@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, useEffect } from 'react'
+import { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react'
 import { authApi } from '../services/api'
 
 const AuthContext = createContext(null)
@@ -8,56 +8,54 @@ export function AuthProvider({ children }) {
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
-    const initAuth = async () => {
-      const token = localStorage.getItem('token')
-      if (token) {
-        try {
-          const userData = await authApi.me()
-          setUser(userData)
-        } catch (error) {
-          localStorage.removeItem('token')
-        }
-      }
-      setLoading(false)
-    }
+    let active = true
+    authApi.me()
+      .then((userData) => active && setUser(userData))
+      .catch(() => active && setUser(null))
+      .finally(() => active && setLoading(false))
 
-    initAuth()
+    const handleUnauthorized = () => setUser(null)
+    window.addEventListener('auth:unauthorized', handleUnauthorized)
+    return () => {
+      active = false
+      window.removeEventListener('auth:unauthorized', handleUnauthorized)
+    }
   }, [])
 
-  const login = async (email, password) => {
-    const response = await authApi.login({ email, password })
-    localStorage.setItem('token', response.access_token)
-    const userData = await authApi.me()
+  const login = useCallback(async (email, password) => {
+    const userData = await authApi.login({ email, password })
     setUser(userData)
     return userData
-  }
+  }, [])
 
-  const register = async (name, email, password) => {
-    await authApi.register({ name, email, password })
-    return login(email, password)
-  }
+  const register = useCallback(async (name, email, password) => {
+    const userData = await authApi.register({ name, email, password })
+    setUser(userData)
+    return userData
+  }, [])
 
-  const logout = () => {
-    localStorage.removeItem('token')
-    setUser(null)
-  }
+  const logout = useCallback(async () => {
+    try {
+      await authApi.logout()
+    } finally {
+      setUser(null)
+    }
+  }, [])
 
-  const value = {
+  const value = useMemo(() => ({
     user,
     loading,
     login,
     register,
     logout,
-    isAuthenticated: !!user,
-  }
+    isAuthenticated: Boolean(user),
+  }), [loading, login, logout, register, user])
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>
 }
 
 export function useAuth() {
   const context = useContext(AuthContext)
-  if (!context) {
-    throw new Error('useAuth must be used within an AuthProvider')
-  }
+  if (!context) throw new Error('useAuth must be used within an AuthProvider')
   return context
 }
