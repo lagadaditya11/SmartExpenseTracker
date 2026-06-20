@@ -3,7 +3,7 @@
 Full-stack personal expense tracking application with budget management and interactive analytics dashboards. Track spending across customizable categories, set monthly budgets, and visualize trends with rich charts.
 
 **Demo credentials:** `admin@example.com` / `admin123`
-
+.
 ## Screenshots
 
 | Login | Dashboard |
