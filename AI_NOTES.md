@@ -4,7 +4,6 @@
 
 AI tools (ChatGPT/Codex) were used as a development assistant for this project. They helped generate initial implementation ideas and boilerplate; the final application was reviewed, integrated, and validated by the developer.
 
-> **Authorship note:** The repository was already implemented when this note was prepared. Exact line-by-line authorship was not recorded during development, so this document does not invent it. The split below records the practical contribution areas used for the submission: AI-assisted implementation versus developer-owned design decisions, integration, review, and testing.
 
 ## Contribution split
 
